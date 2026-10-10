@@ -1,13 +1,17 @@
 import EventKit
 import Foundation
 import Combine
+import CoreData
 
 @MainActor
 final class CalendarScheduler: ObservableObject {
     private let store = EKEventStore()
+    private var context: NSManagedObjectContext?
     private struct Proposal { let starts: Set<String>; let duration: Int; let createdAt: Date }
     private var proposals: [String: Proposal] = [:]
     private var completedOperations: [String: String] = [:]
+
+    func configure(context: NSManagedObjectContext) { self.context = context }
 
     func execute(_ call: GeminiLiveClient.ToolCall) async throws -> String {
         switch call.name {
@@ -101,7 +105,7 @@ final class CalendarScheduler: ObservableObject {
         let status = EKEventStore.authorizationStatus(for: .event)
         guard status == .fullAccess || status == .writeOnly else { throw CalendarToolError.permission }
         guard let calendar = store.defaultCalendarForNewEvents else { throw CalendarToolError.noCalendar }
-        let title = try required("title", call)
+        let requestedTitle = try required("title", call)
         let proposalID = try required("proposal_id", call)
         let operationID = try required("operation_id", call)
         if let previous = completedOperations[operationID] { return previous }
@@ -111,11 +115,13 @@ final class CalendarScheduler: ObservableObject {
         let duration = max(15, min(Int(call.args["duration_minutes"] ?? "30") ?? 30, 240))
         let starts: [String] = try decode(try required("start_times", call))
         let type = try required("activity_type", call)
-        let material = try required("material_id", call)
-        let section = try required("section_id", call)
         let activityID = try required("activity_id", call)
-        let subject = try required("subject", call)
-        let itemCount = max(0, Int(call.args["item_count"] ?? "0") ?? 0)
+        let saved = try savedActivity(id: activityID, kind: type)
+        let title = saved.title.isEmpty ? requestedTitle : saved.title
+        let material = saved.materialID
+        let section = saved.sectionID
+        let subject = saved.subject
+        let itemCount = saved.itemCount
         guard ["quiz", "lesson"].contains(type), !starts.isEmpty,
               duration == proposal.duration, Set(starts).isSubset(of: proposal.starts) else {
             throw CalendarToolError.unapprovedTimes
@@ -162,6 +168,28 @@ final class CalendarScheduler: ObservableObject {
         return result
     }
 
+    private func savedActivity(id: String, kind: String) throws ->
+        (title: String, subject: String, materialID: String, sectionID: String, itemCount: Int) {
+        guard let context, let uuid = UUID(uuidString: id) else { throw CalendarToolError.activityNotFound }
+        if kind == "lesson" {
+            let request = SavedLesson.fetchRequest()
+            request.predicate = NSPredicate(format: "id == %@", uuid as CVarArg)
+            request.fetchLimit = 1
+            guard let lesson = try context.fetch(request).first else { throw CalendarToolError.activityNotFound }
+            return (lesson.title ?? "Lesson", lesson.subjectName ?? "", lesson.materialID ?? "",
+                    lesson.sectionID ?? "", (lesson.items as? Set<LessonItem>)?.count ?? 0)
+        }
+        if kind == "quiz" {
+            let request = QuizSet.fetchRequest()
+            request.predicate = NSPredicate(format: "id == %@", uuid as CVarArg)
+            request.fetchLimit = 1
+            guard let quiz = try context.fetch(request).first else { throw CalendarToolError.activityNotFound }
+            return (quiz.title ?? "Quiz", quiz.subjectName ?? "", quiz.materialID ?? "",
+                    quiz.sectionID ?? "", (quiz.questions as? Set<QuizQuestion>)?.count ?? 0)
+        }
+        throw CalendarToolError.activityNotFound
+    }
+
     private func required(_ key: String, _ call: GeminiLiveClient.ToolCall) throws -> String {
         guard let value = call.args[key], !value.isEmpty else { throw CalendarToolError.missing(key) }
         return value
@@ -191,7 +219,7 @@ final class CalendarScheduler: ObservableObject {
 
 private enum CalendarToolError: LocalizedError {
     case permission, invalidDate, noCalendar, missing(String), unsupported
-    case expiredProposal, unapprovedTimes, slotNoLongerAvailable
+    case expiredProposal, unapprovedTimes, slotNoLongerAvailable, activityNotFound
     var errorDescription: String? {
         switch self {
         case .permission: "Calendar access is required before checking availability or creating study sessions."
@@ -202,6 +230,7 @@ private enum CalendarToolError: LocalizedError {
         case .expiredProposal: "That availability proposal expired. Check the calendar again before scheduling."
         case .unapprovedTimes: "Only times from the learner-approved availability proposal may be scheduled."
         case .slotNoLongerAvailable: "One of those times is no longer free. Check availability again."
+        case .activityNotFound: "That lesson or quiz is not saved in the Library, so it cannot be scheduled or shown in the widget. Save it first."
         }
     }
 }

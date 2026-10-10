@@ -1,4 +1,5 @@
 import Foundation
+import CoreData
 #if canImport(WidgetKit)
 import WidgetKit
 #endif
@@ -31,6 +32,32 @@ enum SharedStudyActivityStore {
                                 itemCount: itemCount, startsAt: $0, deepLink: deepLink.absoluteString)
         }
         guard let data = try? JSONEncoder().encode(values.sorted { $0.startsAt < $1.startsAt }) else { return }
+        UserDefaults(suiteName: appGroup)?.set(data, forKey: storageKey)
+        #if canImport(WidgetKit)
+        WidgetCenter.shared.reloadTimelines(ofKind: "SiriusStudyWidget")
+        #endif
+    }
+
+    @MainActor
+    static func reconcile(context: NSManagedObjectContext) {
+        let values = upcoming()
+        let valid = values.filter { activity in
+            guard let uuid = UUID(uuidString: activity.id) else { return false }
+            if activity.kind == "lesson" {
+                let request = SavedLesson.fetchRequest()
+                request.predicate = NSPredicate(format: "id == %@", uuid as CVarArg)
+                request.fetchLimit = 1
+                return ((try? context.count(for: request)) ?? 0) > 0
+            }
+            if activity.kind == "quiz" {
+                let request = QuizSet.fetchRequest()
+                request.predicate = NSPredicate(format: "id == %@", uuid as CVarArg)
+                request.fetchLimit = 1
+                return ((try? context.count(for: request)) ?? 0) > 0
+            }
+            return false
+        }
+        guard valid != values, let data = try? JSONEncoder().encode(valid) else { return }
         UserDefaults(suiteName: appGroup)?.set(data, forKey: storageKey)
         #if canImport(WidgetKit)
         WidgetCenter.shared.reloadTimelines(ofKind: "SiriusStudyWidget")

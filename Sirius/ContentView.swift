@@ -161,6 +161,7 @@ struct ContentView: View {
             profiles.load(context: viewContext)
             materials.configure(context: viewContext)
             learning.configure(context: viewContext)
+            calendar.configure(context: viewContext)
             tutor.configureToolHandler { call in
                 switch call.name {
                 case "list_subjects", "select_subject":

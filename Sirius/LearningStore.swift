@@ -81,6 +81,7 @@ final class LearningStore: NSObject, ObservableObject {
     func configure(context: NSManagedObjectContext) {
         self.context = context
         migrateStoredAudioPaths(context: context)
+        SharedStudyActivityStore.reconcile(context: context)
         // A cold launch always starts with Sirius at home. Saved activities remain in Library.
         activeQuizObject = nil
         activeQuiz = nil
@@ -643,9 +644,7 @@ final class LearningStore: NSObject, ObservableObject {
         guard (6...16).contains(payload.items.count),
               payload.items.allSatisfy({ allowedStyles.contains($0.style) && $0.script.wordCount >= 90 }),
               Set(payload.items.map(\.style)).count >= 3 else { throw LearningError.invalidLesson }
-        guard let apiKey = elevenLabsKeys.load(), !apiKey.isEmpty else { throw LearningError.missingElevenLabsKey }
         let lessonID = UUID()
-        let audioDirectory = try lessonAudioDirectory(id: lessonID)
         let lesson = SavedLesson(context: context)
         lesson.id = lessonID
         lesson.title = payload.title
@@ -655,43 +654,61 @@ final class LearningStore: NSObject, ObservableObject {
         lesson.sectionID = payload.sectionID
         lesson.createdAt = Date()
         lesson.progress = 0
-        do {
-            for (index, value) in payload.items.enumerated() {
+        var storedItems: [(LessonItem, LessonPayload.Item)] = []
+        for (index, value) in payload.items.enumerated() {
+            let item = LessonItem(context: context)
+            item.id = UUID()
+            item.orderIndex = Int32(index)
+            item.title = value.title
+            item.script = value.script
+            item.style = value.style
+            item.completed = false
+            item.materialID = payload.materialID
+            item.sectionID = payload.sectionID
+            item.lesson = lesson
+            storedItems.append((item, value))
+        }
+        // The readable lesson is durable before narration starts. A provider or network
+        // failure may leave audio incomplete, but it must never remove the Library entry.
+        try context.save()
+        context.processPendingChanges()
+        savedLessonCount = (try? context.count(for: SavedLesson.fetchRequest())) ?? savedLessonCount + 1
+        activeLessonObject = lesson
+        reloadLesson()
+
+        var narrationError: Error?
+        let apiKey = elevenLabsKeys.load()
+        let audioDirectory = try? lessonAudioDirectory(id: lessonID)
+        if apiKey?.isEmpty != false { narrationError = LearningError.missingElevenLabsKey }
+        if audioDirectory == nil { narrationError = LearningError.audioStorage }
+        for (index, pair) in storedItems.enumerated() where narrationError == nil {
+            do {
                 lessonGenerationProgress = "Narrating \(index + 1) of \(payload.items.count)"
-                let itemID = UUID()
                 let audio = try await elevenLabs.synthesize(
-                    text: value.narrationText,
-                    apiKey: apiKey,
+                    text: pair.1.narrationText,
+                    apiKey: apiKey!,
                     voiceID: ElevenLabsConfiguration.voiceID
                 )
-                let audioURL = audioDirectory.appendingPathComponent("\(itemID.uuidString).mp3")
+                guard let itemID = pair.0.id else { throw LearningError.invalidPayload }
+                let audioURL = audioDirectory!.appendingPathComponent("\(itemID.uuidString).mp3")
                 try audio.write(to: audioURL, options: .atomic)
-
-                let item = LessonItem(context: context)
-                item.id = itemID
-                item.orderIndex = Int32(index)
-                item.title = value.title
-                item.script = value.script
-                item.style = value.style
-                item.audioPath = StoredFileLocator.relativePath(for: audioURL)
-                item.completed = false
-                item.materialID = payload.materialID
-                item.sectionID = payload.sectionID
-                item.lesson = lesson
+                pair.0.audioPath = StoredFileLocator.relativePath(for: audioURL)
+                try context.save()
+                reloadLesson()
+            } catch {
+                narrationError = error
+                break
             }
-            try context.save()
-            savedLessonCount += 1
-            activeLessonObject = lesson
-            reloadLesson()
-            let result = ["status": "saved", "activity_id": lesson.id?.uuidString ?? "", "kind": "lesson",
-                          "title": lesson.title ?? payload.title, "material_id": payload.materialID,
-                          "section_id": payload.sectionID, "item_count": payload.items.count] as [String: Any]
-            return String(decoding: try JSONSerialization.data(withJSONObject: result), as: UTF8.self)
-        } catch {
-            context.rollback()
-            try? FileManager.default.removeItem(at: audioDirectory)
-            throw error
         }
+        if let narrationError {
+            errorMessage = "The lesson was saved, but some narration could not be prepared. \(narrationError.localizedDescription)"
+        }
+        let result = ["status": narrationError == nil ? "saved" : "saved_with_audio_error",
+                      "activity_id": lesson.id?.uuidString ?? "", "kind": "lesson",
+                      "title": lesson.title ?? payload.title, "material_id": payload.materialID,
+                      "section_id": payload.sectionID, "item_count": payload.items.count,
+                      "audio_complete": narrationError == nil] as [String: Any]
+        return String(decoding: try JSONSerialization.data(withJSONObject: result), as: UTF8.self)
     }
 
     private func reloadQuiz() {
@@ -888,7 +905,7 @@ private struct LessonPayload: Decodable {
 
 enum LearningError: LocalizedError {
     case invalidPayload, questionCount, invalidType, difficultyOrder, invalidQuestion, invalidLesson
-    case missingElevenLabsKey, audioPlayback, activityNotFound, unsupportedTool(String)
+    case missingElevenLabsKey, audioPlayback, audioStorage, activityNotFound, unsupportedTool(String)
     var errorDescription: String? {
         switch self {
         case .invalidPayload: "The generated learning activity was malformed."
@@ -899,6 +916,7 @@ enum LearningError: LocalizedError {
         case .invalidLesson: "A chapter lesson needs 6–16 substantial podcast segments, at least 90 words each, using at least three teaching styles."
         case .missingElevenLabsKey: "Add an ElevenLabs API key in Settings before creating narrated lessons."
         case .audioPlayback: "The saved lesson audio could not be played."
+        case .audioStorage: "Sirius could not prepare local storage for the lesson narration."
         case .activityNotFound: "That saved learning activity could not be found."
         case .unsupportedTool(let name): "Unsupported learning tool: \(name)."
         }
