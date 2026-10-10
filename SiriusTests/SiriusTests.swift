@@ -37,6 +37,10 @@ struct SiriusTests {
         let parts = try #require(instruction["parts"] as? [[String: Any]])
         #expect((parts.first?["text"] as? String)?.contains("Your name is Sirius") == true)
         #expect((parts.first?["text"] as? String)?.contains("never automatically open") == true)
+        #expect((parts.first?["text"] as? String)?.contains("Always speak and write in English by default") == true)
+        let transcription = try #require(setup["inputAudioTranscription"] as? [String: Any])
+        #expect(transcription["languageCodes"] as? [String] == ["en-US"])
+        #expect(transcription["mode"] as? String == "SMART")
     }
 
     @Test func textPromptCompletesAUserTurn() throws {

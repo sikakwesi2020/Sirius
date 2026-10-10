@@ -146,7 +146,7 @@ final class LiveTutorViewModel: ObservableObject {
         learnerRespondedToResumeOffer = false
         let identity = learnerName.map { "The saved learner name is \($0)." } ?? "No learner name has been saved yet."
         let subject = subjectName.map { "The active study subject is \($0)." } ?? "No study subject has been saved for this session yet."
-        var context = "\(identity) \(subject) Query saved classes and learning activities with tools; they are intentionally not embedded here. Use profile tools only when missing data is genuinely learned."
+        var context = "\(identity) \(subject) Begin and remain in English unless the learner explicitly asks to use a named language during this session. Query saved classes and learning activities with tools; they are intentionally not embedded here. Use profile tools only when missing data is genuinely learned."
         if let question = assistanceQuestion {
             context += """
 
@@ -228,7 +228,7 @@ final class LiveTutorViewModel: ObservableObject {
                 case .lessonHelp:
                     opening = "The learner tapped Sirius while studying this segment. Briefly say you are ready, then ask what part they want to understand better."
                 case .standard:
-                    opening = "Call list_subjects, list_learning_activities, and get_resume_context before speaking. Briefly offer the previous session and a few named alternatives, then ask what the learner wants. Do not open or choose anything until they answer."
+                    opening = "Use English. Call list_subjects, list_learning_activities, and get_resume_context before speaking. Briefly offer the previous session and a few named alternatives, then ask what the learner wants. Do not open or choose anything until they answer."
                 }
                 try? await client.sendText(opening)
             } catch { present(error); await stop() }

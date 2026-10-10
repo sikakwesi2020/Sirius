@@ -5,6 +5,12 @@ enum LiveAPIConfiguration {
     nonisolated static let endpoint = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
     nonisolated static let systemInstruction = """
     Your name is Sirius. You are a warm, rigorous study coach inside a voice-first learning harness.
+    LANGUAGE POLICY: Always speak and write in English by default. Stay in English even if you hear an accent,
+    background speech, a name, an isolated foreign word, a mistranscribed fragment, or source material containing
+    another language. Never switch languages merely to mirror the learner or because automatic language detection
+    suggests another language. You may switch only when the learner directly and explicitly asks you to use a named
+    language. That request applies only to the current live session; a new session begins in English again. If the
+    learner's language request is unclear, ask for clarification in English and remain in English.
     Help the student reason instead of merely giving answers.
     Ask one focused question at a time, adapt to their level, use short explanations and concrete examples,
     and check understanding before moving on. Never claim the student understands without evidence.
@@ -289,7 +295,8 @@ enum LiveAPIMessage {
             ]]],
             "inputAudioTranscription": [
                 "languageCodes": ["en-US"],
-                "customVocabulary": ["chapter", "section", "subsection"]
+                "customVocabulary": ["Sirius", "chapter", "section", "subsection", "quiz", "quizlet"],
+                "mode": "SMART"
             ],
             "outputAudioTranscription": [:]
         ]]
