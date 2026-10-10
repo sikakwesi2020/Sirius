@@ -3,7 +3,134 @@
     <entity name="Item" representedClassName="Item" syncable="YES" codeGenerationType="class">
         <attribute name="timestamp" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
     </entity>
+    <entity name="LearnerProfile" representedClassName="LearnerProfile" syncable="YES" codeGenerationType="class">
+        <attribute name="createdAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="username" optional="NO" attributeType="String"/>
+        <relationship name="subjects" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="SubjectProfile" inverseName="learner" inverseEntity="SubjectProfile"/>
+    </entity>
+    <entity name="SubjectProfile" representedClassName="SubjectProfile" syncable="YES" codeGenerationType="class">
+        <attribute name="createdAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="lastStudiedAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="name" optional="NO" attributeType="String"/>
+        <relationship name="learner" optional="NO" maxCount="1" deletionRule="Nullify" destinationEntity="LearnerProfile" inverseName="subjects" inverseEntity="LearnerProfile"/>
+        <relationship name="materials" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="StudyMaterial" inverseName="subject" inverseEntity="StudyMaterial"/>
+    </entity>
+    <entity name="StudyMaterial" representedClassName="StudyMaterial" syncable="YES" codeGenerationType="class">
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="importedAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="localPath" optional="NO" attributeType="String"/>
+        <attribute name="pageCount" optional="NO" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="title" optional="NO" attributeType="String"/>
+        <relationship name="sections" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="MaterialSection" inverseName="material" inverseEntity="MaterialSection"/>
+        <relationship name="subject" optional="NO" maxCount="1" deletionRule="Nullify" destinationEntity="SubjectProfile" inverseName="materials" inverseEntity="SubjectProfile"/>
+    </entity>
+    <entity name="MaterialSection" representedClassName="MaterialSection" syncable="YES" codeGenerationType="class">
+        <attribute name="bookmarkID" optional="NO" attributeType="String"/>
+        <attribute name="depth" optional="NO" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="endPage" optional="NO" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="parentBookmarkID" optional="YES" attributeType="String"/>
+        <attribute name="sortIndex" optional="NO" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="startPage" optional="NO" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="title" optional="NO" attributeType="String"/>
+        <relationship name="material" optional="NO" maxCount="1" deletionRule="Nullify" destinationEntity="StudyMaterial" inverseName="sections" inverseEntity="StudyMaterial"/>
+    </entity>
+    <entity name="QuizSet" representedClassName="QuizSet" syncable="YES" codeGenerationType="class">
+        <attribute name="completedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="createdAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="currentIndex" optional="NO" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="materialID" optional="NO" attributeType="String"/>
+        <attribute name="score" optional="NO" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="sectionID" optional="NO" attributeType="String"/>
+        <attribute name="subjectName" optional="NO" attributeType="String"/>
+        <attribute name="title" optional="NO" attributeType="String"/>
+        <relationship name="questions" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="QuizQuestion" inverseName="quiz" inverseEntity="QuizQuestion"/>
+    </entity>
+    <entity name="QuizQuestion" representedClassName="QuizQuestion" syncable="YES" codeGenerationType="class">
+        <attribute name="answered" optional="NO" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="correct" optional="NO" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="correctAnswersJSON" optional="NO" attributeType="String"/>
+        <attribute name="difficulty" optional="NO" attributeType="Integer 16" defaultValueString="1" usesScalarValueType="YES"/>
+        <attribute name="explanation" optional="NO" attributeType="String"/>
+        <attribute name="hintContext" optional="NO" attributeType="String"/>
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="materialID" optional="NO" attributeType="String"/>
+        <attribute name="optionsJSON" optional="NO" attributeType="String"/>
+        <attribute name="orderIndex" optional="NO" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="prompt" optional="NO" attributeType="String"/>
+        <attribute name="selectedAnswersJSON" optional="YES" attributeType="String"/>
+        <attribute name="sectionID" optional="NO" attributeType="String"/>
+        <attribute name="type" optional="NO" attributeType="String"/>
+        <relationship name="quiz" optional="NO" maxCount="1" deletionRule="Nullify" destinationEntity="QuizSet" inverseName="questions" inverseEntity="QuizSet"/>
+    </entity>
+    <entity name="SavedLesson" representedClassName="SavedLesson" syncable="YES" codeGenerationType="class">
+        <attribute name="completedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="content" optional="NO" attributeType="String"/>
+        <attribute name="createdAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="materialID" optional="NO" attributeType="String"/>
+        <attribute name="progress" optional="NO" attributeType="Double" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="sectionID" optional="NO" attributeType="String"/>
+        <attribute name="subjectName" optional="NO" attributeType="String"/>
+        <attribute name="title" optional="NO" attributeType="String"/>
+        <relationship name="items" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="LessonItem" inverseName="lesson" inverseEntity="LessonItem"/>
+    </entity>
+    <entity name="LessonItem" representedClassName="LessonItem" syncable="YES" codeGenerationType="class">
+        <attribute name="audioPath" optional="YES" attributeType="String"/>
+        <attribute name="completed" optional="NO" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="materialID" optional="NO" attributeType="String"/>
+        <attribute name="orderIndex" optional="NO" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="script" optional="NO" attributeType="String"/>
+        <attribute name="sectionID" optional="NO" attributeType="String"/>
+        <attribute name="style" optional="NO" attributeType="String" defaultValueString="deep_dive"/>
+        <attribute name="title" optional="NO" attributeType="String"/>
+        <relationship name="lesson" optional="NO" maxCount="1" deletionRule="Nullify" destinationEntity="SavedLesson" inverseName="items" inverseEntity="SavedLesson"/>
+    </entity>
+    <entity name="StudyCheckpoint" representedClassName="StudyCheckpoint" syncable="YES" codeGenerationType="class">
+        <attribute name="activityID" optional="YES" attributeType="String"/>
+        <attribute name="activityType" optional="YES" attributeType="String"/>
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="itemID" optional="YES" attributeType="String"/>
+        <attribute name="materialID" optional="YES" attributeType="String"/>
+        <attribute name="nextAction" optional="YES" attributeType="String"/>
+        <attribute name="playbackPosition" optional="NO" attributeType="Double" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="sectionID" optional="YES" attributeType="String"/>
+        <attribute name="subjectName" optional="YES" attributeType="String"/>
+        <attribute name="summary" optional="YES" attributeType="String"/>
+        <attribute name="updatedAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+    </entity>
+    <entity name="QuestionAttempt" representedClassName="QuestionAttempt" syncable="YES" codeGenerationType="class">
+        <attribute name="attemptNumber" optional="NO" attributeType="Integer 32" defaultValueString="1" usesScalarValueType="YES"/>
+        <attribute name="correct" optional="NO" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="createdAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="hintUsed" optional="NO" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="questionID" optional="NO" attributeType="String"/>
+        <attribute name="quizID" optional="NO" attributeType="String"/>
+        <attribute name="selectedAnswersJSON" optional="NO" attributeType="String"/>
+    </entity>
+    <entity name="GenerationOperation" representedClassName="GenerationOperation" syncable="YES" codeGenerationType="class">
+        <attribute name="createdAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="kind" optional="NO" attributeType="String"/>
+        <attribute name="operationID" optional="NO" attributeType="String"/>
+        <attribute name="resultJSON" optional="NO" attributeType="String"/>
+    </entity>
     <elements>
         <element name="Item" positionX="-63" positionY="-18" width="128" height="44"/>
+        <element name="LearnerProfile" positionX="-63" positionY="54" width="128" height="104"/>
+        <element name="SubjectProfile" positionX="153" positionY="54" width="128" height="119"/>
+        <element name="StudyMaterial" positionX="369" positionY="54" width="128" height="134"/>
+        <element name="MaterialSection" positionX="585" positionY="54" width="128" height="179"/>
+        <element name="QuizSet" positionX="801" positionY="54" width="128" height="194"/>
+        <element name="QuizQuestion" positionX="1017" positionY="54" width="128" height="254"/>
+        <element name="SavedLesson" positionX="801" positionY="306" width="128" height="179"/>
+        <element name="LessonItem" positionX="1017" positionY="350" width="128" height="179"/>
+        <element name="StudyCheckpoint" positionX="801" positionY="540" width="128" height="224"/>
+        <element name="QuestionAttempt" positionX="1017" positionY="540" width="128" height="164"/>
+        <element name="GenerationOperation" positionX="1233" positionY="540" width="128" height="104"/>
     </elements>
 </model>
