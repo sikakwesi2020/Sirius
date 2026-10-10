@@ -9,6 +9,15 @@ struct StudyMessage: Identifiable, Equatable {
     var text: String
 }
 
+struct AgentToolActivity: Identifiable, Equatable {
+    enum Status: Equatable { case running, succeeded, failed }
+    let id: UUID
+    let toolName: String
+    let title: String
+    var detail: String
+    var status: Status
+}
+
 private enum TutorHarnessError: LocalizedError {
     case invalidGenerationContext, incompleteExtraction, subjectMismatch, activityChoiceRequired
     var errorDescription: String? {
@@ -86,6 +95,7 @@ final class LiveTutorViewModel: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var pendingConfirmation: AgentConfirmation?
     @Published private(set) var pendingMaterialRequest: GeminiLiveClient.ToolCall?
+    @Published private(set) var toolActivity: AgentToolActivity?
 
     private let keyStore = APIKeyStore()
     private let elevenLabsKeyStore = ElevenLabsKeyStore()
@@ -103,6 +113,7 @@ final class LiveTutorViewModel: ObservableObject {
     private var expectedChunks: [String: Int] = [:]
     private var didLoadResumeContext = false
     private var learnerRespondedToResumeOffer = false
+    private var toolFailureCounts: [String: Int] = [:]
 
     var savedAPIKey: String? { keyStore.load() }
     var savedElevenLabsKey: String? { elevenLabsKeyStore.load() }
@@ -144,6 +155,8 @@ final class LiveTutorViewModel: ObservableObject {
         expectedChunks = [:]
         didLoadResumeContext = false
         learnerRespondedToResumeOffer = false
+        toolFailureCounts = [:]
+        toolActivity = nil
         let identity = learnerName.map { "The saved learner name is \($0)." } ?? "No learner name has been saved yet."
         let subject = subjectName.map { "The active study subject is \($0)." } ?? "No study subject has been saved for this session yet."
         var context = "\(identity) \(subject) Begin and remain in English unless the learner explicitly asks to use a named language during this session. Query saved classes and learning activities with tools; they are intentionally not embedded here. Use profile tools only when missing data is genuinely learned."
@@ -201,6 +214,8 @@ final class LiveTutorViewModel: ObservableObject {
         expectedChunks = [:]
         didLoadResumeContext = false
         learnerRespondedToResumeOffer = false
+        toolFailureCounts = [:]
+        toolActivity = nil
         await client.disconnect()
         state = .disconnected
         finalizeTranscripts()
@@ -324,8 +339,11 @@ final class LiveTutorViewModel: ObservableObject {
     }
 
     private func executeDeterministicTool(_ call: GeminiLiveClient.ToolCall) async {
+        let activityID = beginToolActivity(call)
         guard let toolHandler else {
-            try? await client.sendToolResponse(call: call, result: "Local tool harness is unavailable.", status: "error")
+            let result = failureResult(call: call, message: "Local tool harness is unavailable.", retryAllowed: false)
+            finishToolActivity(id: activityID, succeeded: false, detail: "Tool harness unavailable")
+            try? await client.sendToolResponse(call: call, result: result, status: "error")
             return
         }
         do {
@@ -336,7 +354,15 @@ final class LiveTutorViewModel: ObservableObject {
                 try validateCompleteExtraction(for: call)
             }
             let result = try await toolHandler(call)
-            try await client.sendToolResponse(call: call, result: result)
+            let partialFailure = resultIndicatesFailure(result)
+            try await client.sendToolResponse(call: call, result: result, status: partialFailure ? "error" : "success")
+            finishToolActivity(
+                id: activityID,
+                succeeded: !partialFailure,
+                detail: partialFailure ? "Saved with an incomplete step" : "Completed successfully"
+            )
+            if partialFailure { return }
+            toolFailureCounts[toolSignature(call)] = nil
             if call.name == "list_subjects" { didListSubjects = true }
             if call.name == "select_subject", let selected = call.args["subject"] {
                 sessionSubject = selected
@@ -353,7 +379,79 @@ final class LiveTutorViewModel: ObservableObject {
             if call.name == "open_learning_activity" { await stop(); return }
         } catch {
             present(error)
-            try? await client.sendToolResponse(call: call, result: error.localizedDescription, status: "error")
+            let signature = toolSignature(call)
+            let failures = toolFailureCounts[signature, default: 0] + 1
+            toolFailureCounts[signature] = failures
+            let retryAllowed = failures < 2
+            let result = failureResult(call: call, message: error.localizedDescription, retryAllowed: retryAllowed)
+            finishToolActivity(id: activityID, succeeded: false,
+                               detail: retryAllowed ? "Failed — Sirius can retry once" : "Failed — retry limit reached")
+            try? await client.sendToolResponse(call: call, result: result, status: "error")
+        }
+    }
+
+    private func beginToolActivity(_ call: GeminiLiveClient.ToolCall) -> UUID {
+        let id = UUID()
+        toolActivity = AgentToolActivity(id: id, toolName: call.name, title: toolTitle(call.name),
+                                         detail: "Working…", status: .running)
+        return id
+    }
+
+    private func finishToolActivity(id: UUID, succeeded: Bool, detail: String) {
+        guard toolActivity?.id == id else { return }
+        toolActivity?.status = succeeded ? .succeeded : .failed
+        toolActivity?.detail = detail
+        guard succeeded else { return }
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2.2))
+            guard self?.toolActivity?.id == id else { return }
+            self?.toolActivity = nil
+        }
+    }
+
+    private func resultIndicatesFailure(_ result: String) -> Bool {
+        guard let data = result.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+        if let success = object["success"] as? Bool, !success { return true }
+        if let complete = object["audio_complete"] as? Bool, !complete { return true }
+        if let status = object["status"] as? String,
+           status.localizedCaseInsensitiveContains("error") || status.localizedCaseInsensitiveContains("failed") { return true }
+        return false
+    }
+
+    private func failureResult(call: GeminiLiveClient.ToolCall, message: String, retryAllowed: Bool) -> String {
+        let value: [String: Any] = [
+            "status": "failed", "tool": call.name, "error": message,
+            "retry_allowed": retryAllowed,
+            "instruction": retryAllowed
+                ? "Acknowledge the failure briefly and retry this exact action at most once if it is safe. Do not claim it is still running."
+                : "Stop this action, tell the learner what failed, and ask how they want to proceed. Do not claim it is still running or completed."
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: value) else { return message }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    private func toolSignature(_ call: GeminiLiveClient.ToolCall) -> String {
+        "\(call.name)|\(call.args.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: "&"))"
+    }
+
+    private func toolTitle(_ name: String) -> String {
+        switch name {
+        case "list_subjects": "Checking your classes"
+        case "select_subject": "Selecting your class"
+        case "list_materials": "Checking your books"
+        case "get_pdf_outline": "Reading the book outline"
+        case "extract_pdf_section": "Retrieving the study section"
+        case "create_quiz": "Saving your quiz"
+        case "save_lesson": "Saving and narrating your lesson"
+        case "list_learning_activities", "get_learning_activity", "get_resume_context": "Checking your study progress"
+        case "open_learning_activity": "Opening your activity"
+        case "check_calendar_permission": "Checking calendar access"
+        case "find_study_slots": "Finding available study times"
+        case "schedule_study_plan": "Scheduling your study plan"
+        case "check_notification_permission": "Checking notification access"
+        case "schedule_activity_notifications": "Scheduling study reminders"
+        default: "Sirius is performing an action"
         }
     }
 

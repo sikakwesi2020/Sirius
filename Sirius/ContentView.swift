@@ -229,11 +229,17 @@ struct ContentView: View {
             }
             .frame(height: 330)
             stateLabel
+            if let activity = tutor.toolActivity {
+                AgentToolActivityCard(activity: activity)
+                    .padding(.top, 18)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
             Spacer()
             Color.clear.frame(height: 76)
         }
         .padding(.horizontal, 28)
         .padding(.top, 18)
+        .animation(.spring(response: 0.38, dampingFraction: 0.82), value: tutor.toolActivity)
     }
 
     private var header: some View {
@@ -570,6 +576,65 @@ private struct StreamingWaveLine: View {
             }
         }
         .animation(.easeInOut(duration: 0.35), value: isActive)
+    }
+}
+
+private struct AgentToolActivityCard: View {
+    let activity: AgentToolActivity
+
+    private var color: Color {
+        switch activity.status {
+        case .running: .white
+        case .succeeded: .green
+        case .failed: .red
+        }
+    }
+
+    private var symbol: String {
+        switch activity.status {
+        case .running: "gearshape.2.fill"
+        case .succeeded: "checkmark"
+        case .failed: "exclamationmark"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 13) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 11)
+                    .fill(color.opacity(activity.status == .running ? 0.12 : 0.18))
+                    .frame(width: 43, height: 43)
+                if activity.status == .running {
+                    ProgressView().tint(.white)
+                } else {
+                    Image(systemName: symbol)
+                        .font(.system(size: 15, weight: .black)).foregroundStyle(color)
+                }
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(activity.title.uppercased())
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .tracking(1.1).foregroundStyle(.white)
+                Text(activity.detail)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(activity.status == .failed ? Color.red.opacity(0.9) : .white.opacity(0.58))
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 4)
+            if activity.status == .running {
+                TimelineView(.animation(minimumInterval: 0.45)) { timeline in
+                    Text(String(repeating: "·", count: Int(timeline.date.timeIntervalSinceReferenceDate * 2) % 3 + 1))
+                        .font(.system(size: 14, weight: .black, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.45))
+                        .frame(width: 24, alignment: .leading)
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 17))
+        .overlay(RoundedRectangle(cornerRadius: 17).stroke(color.opacity(0.2)))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(activity.title). \(activity.detail)")
     }
 }
 
