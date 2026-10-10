@@ -57,14 +57,84 @@ private struct SiriusWidgetView: View {
 
     var body: some View {
         Group {
-            if family == .systemSmall { compact }
-            else { expanded }
+            switch family {
+            case .accessoryInline: lockScreenInline
+            case .accessoryCircular: lockScreenCircular
+            case .accessoryRectangular: lockScreenRectangular
+            case .systemSmall: compact
+            default: expanded
+            }
         }
         .containerBackground(for: .widget) {
-            LinearGradient(colors: [Color(red: 0.015, green: 0.04, blue: 0.09), .black],
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            if isLockScreenFamily { Color.clear }
+            else {
+                LinearGradient(colors: [Color(red: 0.015, green: 0.04, blue: 0.09), .black],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+            }
         }
         .widgetURL(URL(string: entry.activity?.deepLink ?? "sirius://home"))
+    }
+
+    private var isLockScreenFamily: Bool {
+        family == .accessoryInline || family == .accessoryCircular || family == .accessoryRectangular
+    }
+
+    private var lockScreenInline: some View {
+        Label {
+            if let activity = entry.activity {
+                Text("\(activity.title) · \(activity.startsAt, style: .relative)")
+            } else {
+                Text("Sirius · Ready to study")
+            }
+        } icon: {
+            Image(systemName: entry.activity?.kind == "quiz" ? "questionmark.app.fill" : "cube.fill")
+        }
+    }
+
+    private var lockScreenCircular: some View {
+        ZStack {
+            AccessoryWidgetBackground()
+            VStack(spacing: 1) {
+                SiriusLockScreenCube().frame(width: 30, height: 30)
+                if let activity = entry.activity {
+                    Text(activity.startsAt, style: .timer)
+                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .lineLimit(1).minimumScaleFactor(0.55)
+                } else {
+                    Text("STUDY").font(.system(size: 7, weight: .black, design: .monospaced))
+                }
+            }
+            .widgetAccentable()
+        }
+    }
+
+    private var lockScreenRectangular: some View {
+        HStack(spacing: 9) {
+            SiriusLockScreenCube().frame(width: 43, height: 43).widgetAccentable()
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.activity == nil ? "SIRIUS IS READY" : "UP NEXT")
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                Text(entry.activity?.title ?? "Let's start learning")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .lineLimit(2)
+                if let activity = entry.activity {
+                    HStack(spacing: 4) {
+                        Image(systemName: activity.kind == "quiz" ? "questionmark.circle.fill" : "headphones")
+                        if activity.itemCount > 0 {
+                            Text("\(activity.itemCount) \(activity.kind == "quiz" ? "questions" : "parts")")
+                        }
+                        Text("·")
+                        Text(activity.startsAt, style: .relative)
+                    }
+                    .font(.system(size: 9, weight: .semibold))
+                    .lineLimit(1)
+                } else {
+                    Text("Tap to wake your study companion")
+                        .font(.system(size: 9, weight: .semibold)).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
     }
 
     private var compact: some View {
@@ -122,6 +192,36 @@ private struct SiriusWidgetView: View {
     }
 }
 
+private struct SiriusLockScreenCube: View {
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 7)
+                .fill(.primary.opacity(0.16))
+                .overlay(RoundedRectangle(cornerRadius: 7).stroke(.primary, lineWidth: 1.5))
+            HStack(spacing: 5) {
+                Capsule().fill(.primary).frame(width: 3.5, height: 6)
+                Capsule().fill(.primary).frame(width: 3.5, height: 6)
+            }
+            .offset(y: -4)
+            SiriusLockSmile().stroke(.primary, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                .frame(width: 13, height: 6).offset(y: 6)
+        }
+        .rotation3DEffect(.degrees(-10), axis: (x: 1, y: 0, z: 0))
+        .rotation3DEffect(.degrees(14), axis: (x: 0, y: 1, z: 0))
+        .accessibilityHidden(true)
+    }
+}
+
+private struct SiriusLockSmile: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.minY),
+                          control: CGPoint(x: rect.midX, y: rect.maxY))
+        return path
+    }
+}
+
 private struct SiriusWidgetCube: View {
     var body: some View {
         ZStack {
@@ -166,6 +266,6 @@ private struct SiriusStudyWidget: Widget {
         }
         .configurationDisplayName("Sirius Study")
         .description("See your next lesson or quiz and jump straight back in.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([.systemSmall, .systemMedium, .accessoryInline, .accessoryCircular, .accessoryRectangular])
     }
 }
