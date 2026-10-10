@@ -38,6 +38,8 @@ struct SiriusTests {
         #expect((parts.first?["text"] as? String)?.contains("Your name is Sirius") == true)
         #expect((parts.first?["text"] as? String)?.contains("never automatically open") == true)
         #expect((parts.first?["text"] as? String)?.contains("Always speak and write in English by default") == true)
+        #expect((parts.first?["text"] as? String)?.contains("two or three closely related") == true)
+        #expect((parts.first?["text"] as? String)?.contains("Never ask more than three") == true)
         let transcription = try #require(setup["inputAudioTranscription"] as? [String: Any])
         #expect(transcription["languageCodes"] as? [String] == ["en-US"])
         #expect(transcription["mode"] as? String == "SMART")
